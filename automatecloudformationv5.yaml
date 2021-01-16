@@ -1,0 +1,527 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  apiGatewayName:
+    Type: String
+    Default: my-api
+  apiGatewayStageName:
+    Type: String
+    AllowedPattern: '[a-z0-9]+'
+    Default: call
+  apiGatewayHTTPMethod:
+    Type: String
+    Default: POST
+  lambdaFunctionName:
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+'
+    Default: my-function
+  vpcendpoint: 
+    Type: String
+    Default: vpce-067248a56e9231151
+Resources:
+  S3BucketRoot:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Delete
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Sub '${AWS::StackName}-root'
+      WebsiteConfiguration:
+        ErrorDocument: 404.html
+        IndexDocument: index.html
+      Tags:
+        - Key: STAGE
+          Value: dev
+        - Key: intl_country
+          Value: co
+        - Key: intl_region
+          Value: latam
+        - Key: lm_app_env
+          Value: dev
+        - Key: lm_sbu
+          Value: INTL
+        - Key: lm_troux_uid
+          Value: 8EBD6023-FB34-49C0-8F91-0A6A0304A99D
+  S3BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref S3BucketRoot
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 's3:GetObject'
+            Principal: '*'
+            Resource: !Sub '${S3BucketRoot.Arn}/*'
+            
+  apiGateway:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Description: Example API Gateway
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Name: !Ref apiGatewayName
+      Tags:
+        - Key: STAGE
+          Value: dev
+        - Key: intl_country
+          Value: co
+        - Key: intl_region
+          Value: latam
+        - Key: lm_app_env
+          Value: dev
+        - Key: lm_sbu
+          Value: INTL
+        - Key: lm_troux_uid
+          Value: 8EBD6023-FB34-49C0-8F91-0A6A0304A99D
+  apiGatewayRootMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: !Ref apiGatewayHTTPMethod
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS
+        Uri: !Sub 
+          - >-
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt 
+              - importCertificateLambda
+              - Arn
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: $input.json('$')
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: >-
+                'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+              method.response.header.Access-Control-Allow-Methods: '''POST,OPTIONS'''
+              method.response.header.Access-Control-Allow-Origin: '''*'''
+        RequestTemplates:
+          application/json: $input.json('$')
+      RequestParameters:
+        method.request.querystring.name: false
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          ResponseModels:
+            application/json: Empty
+      ResourceId: !GetAtt 
+        - apiGateway
+        - RootResourceId
+      RestApiId: !Ref apiGateway
+  OptionsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref apiGateway
+      ResourceId: !GetAtt 
+        - apiGateway
+        - RootResourceId
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: >-
+                'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+              method.response.header.Access-Control-Allow-Methods: '''POST,OPTIONS'''
+              method.response.header.Access-Control-Allow-Origin: '''*'''
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+  apiGatewayDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    DependsOn:
+      - apiGatewayRootMethod
+      - OptionsMethod
+    Properties:
+      RestApiId: !Ref apiGateway
+      StageName: !Ref apiGatewayStageName
+  importCertificateLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt 
+        - importCertificateRole
+        - Arn
+      Runtime: python3.7
+      Code:
+        ZipFile: !Join 
+          - |+
+
+          - - import json
+            - import boto3
+            - import sys
+            - ''
+            - 'def lambda_handler(event, context):'
+            - '    # TODO implement'
+            - '    arn=event["arn"]'
+            - '    certificate = event["key1"]'
+            - '    privatekey=event["key2"]'
+            - '    chain=event["key3"]'
+            - '    llave=event["key"]'
+            - '    valor=event["tag"]'
+            - '    if arn=="" and certificate!="":'
+            - '        acm=boto3.client(''acm'')'
+            - '        test=acm.import_certificate('
+            - '        Certificate=certificate,'
+            - '        PrivateKey=privatekey,'
+            - '        CertificateChain=chain,'
+            - '        Tags=['
+            - '        {'
+            - '        ''Key'': llave,'
+            - '        ''Value'': valor'
+            - '        },'
+            - '        ]'
+            - '        )'
+            - '        transactionResponse=test[''CertificateArn'']'
+            - '        responseObject = {}'
+            - '        responseObject[''statusCode'']=200'
+            - '        responseObject[''headers'']={}'
+            - '        responseObject[''headers''][''Content-Type'']=''application/json'''
+            - '        responseObject[''body'']=json.dumps(transactionResponse)'
+            - '        return transactionResponse'
+            - '    if arn!="":'
+            - '        acm=boto3.client(''acm'')'
+            - '        test=acm.import_certificate('
+            - '        CertificateArn=arn,    '
+            - '        Certificate=certificate,'
+            - '        PrivateKey=privatekey,'
+            - '        CertificateChain=chain'
+            - '        )'
+            - '        tags=acm.add_tags_to_certificate('
+            - '        CertificateArn=arn,'
+            - '        Tags=['
+            - '        {'
+            - '            ''Key'': llave,'
+            - '            ''Value'': valor'
+            - '        },'
+            - '        ]'
+            - '        )'
+            - '        transactionResponse=test[''CertificateArn'']'
+            - '        responseObject = {}'
+            - '        responseObject[''statusCode'']=200'
+            - '        responseObject[''headers'']={}'
+            - '        responseObject[''headers''][''Content-Type'']=''application/json'''
+            - '        responseObject[''body'']=json.dumps(transactionResponse)'
+            - '        return transactionResponse   '
+            - '    if  arn=="" and certificate=="":'
+            - '        acm=boto3.client(''acm'') '
+            - '        test=acm.list_certificates() '
+            - '        transactionResponse=test[''CertificateSummaryList''] '
+            - '        responseObject = [] '
+            - '        for i in transactionResponse: '
+            - '            arn=i[''CertificateArn''] '
+            - '            domain=i[''DomainName''] '
+            - '            describe=acm.describe_certificate( CertificateArn=arn)'
+            - '            expire=describe[''Certificate''][''NotAfter''].strftime("%Y-%m-%d %H:%M:%S") '
+            - '            result="<div>"+domain+" "+arn+" "+expire+"</div>"'
+            - '            responseObject.append(result) '
+            - '        str1 = '<br>'.join(responseObject)  '
+            - '        return(str1) '
+      Tags:
+        - Key: STAGE
+          Value: dev
+        - Key: intl_country
+          Value: co
+        - Key: intl_region
+          Value: latam
+        - Key: lm_app_env
+          Value: dev
+        - Key: lm_sbu
+          Value: INTL
+        - Key: lm_troux_uid
+          Value: 8EBD6023-FB34-49C0-8F91-0A6A0304A99D
+      Timeout: 900
+  importCertificateRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/AWSCertificateManagerFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+      Tags:
+        - Key: STAGE
+          Value: dev
+        - Key: intl_country
+          Value: co
+        - Key: intl_region
+          Value: latam
+        - Key: lm_app_env
+          Value: dev
+        - Key: lm_sbu
+          Value: INTL
+        - Key: lm_troux_uid
+          Value: 8EBD6023-FB34-49C0-8F91-0A6A0304A99D
+  lambdaApiGatewayInvoke:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn:
+      - importCertificateLambda
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt 
+        - importCertificateLambda
+        - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub >-
+        arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/${apiGatewayHTTPMethod}/
+  testLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - S3BucketRoot
+      - S3BucketPolicy
+      - apiGatewayDeployment
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt 
+        - importCertificateRole
+        - Arn
+      Environment:
+        Variables:
+          s3bucket: !Ref S3BucketRoot
+          api: !Sub ' https://${apiGateway}.execute-api.${AWS::Region}.amazonaws.com/${apiGatewayStageName}/'
+      Runtime: python2.7
+      Code:
+        ZipFile:  |
+            import json
+            import boto3
+            import sys
+            import os
+            import cfnresponse
+            def lambda_handler(event, context):
+                # TODO implement
+                print('EVENT:[{}]'.format(event))
+                api=os.environ["api"]
+                bucket_name=os.environ["s3bucket"]
+                html='''<html>
+                <head>
+                <script>
+                function submitToAPI(e) {
+                       e.preventDefault();
+                //       var URL = "API Gateway";
+                         var arn = document.getElementById("arn").value;	
+                         var name = document.getElementById("key1").value;
+                       var phone = document.getElementById("key2").value;
+                       var email = document.getElementById("key3").value;
+                       var desc = document.getElementById("key").value;
+                       var tagvalue = document.getElementById("keytag").value;	
+                       
+                          var data = {
+                          arn:arn,
+                          key1: name,
+                          key2 : phone,
+                          key3 : email,
+                          key : desc,
+                      tag:tagvalue	
+                        };
+                        var xmlhttp = new XMLHttpRequest();
+                        xmlhttp.open("POST","'''
+                html2='''");
+                xmlhttp.setRequestHeader("Content-Type", "application/json");
+                    xmlhttp.send(JSON.stringify(data));
+                    xmlhttp.onreadystatechange = function() {
+                    if (xmlhttp.readyState === 4) {
+                        var response = JSON.parse(xmlhttp.responseText);
+                        if (xmlhttp.status === 200 ) {
+                            console.log('successful');
+                            message=xmlhttp.response;
+                            document.getElementsByClassName('message')[0].innerHTML=message;
+                        } else {
+                            console.log('failed');
+                        }
+                    }
+                }
+                document.getElementById('contact-form').reset();
+                
+                } 
+                </script>
+                <style>
+                body {
+                    text-align: center;
+                font-family: "Helvetica", sans-serif;
+                background-color: #f1c140
+                }
+                 h4 {
+                font-size: 2em;
+                font-weight: bold;
+                color: #002663;
+              }
+               button {
+                color: white;
+                background-color: #4791d0;
+                border-radius: 5px;
+                border: 1px solid #4791d0;
+                padding: 5px 10px 8px 10px;
+              }
+              button:hover {
+                background-color: #0F5897;
+                border: 1px solid #0F5897;
+              }
+             textarea {
+              border-radius: 25px;
+              border: 2px solid #002663;
+              padding: 20px;
+              width: 200px;
+              
+            }
+            .box {
+                border-radius: 5px;
+                background-color: #eee;
+                padding: 20px 5px;
+              }
+                </style>
+                '''
+                print (html + api+ html2)
+                body_file=html + api+ html2
+                s3 = boto3.client('s3')
+                s3.put_object(
+                Bucket=bucket_name,
+                Body=body_file,
+                Key='indexa.html',
+                ContentType='text/html'
+                )
+                responseValue = 120
+                responseData = {}
+                responseData['Data'] = responseValue
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            
+      Tags:
+        - Key: STAGE
+          Value: dev
+        - Key: intl_country
+          Value: co
+        - Key: intl_region
+          Value: latam
+        - Key: lm_app_env
+          Value: dev
+        - Key: lm_sbu
+          Value: INTL
+        - Key: lm_troux_uid
+          Value: 8EBD6023-FB34-49C0-8F91-0A6A0304A99D
+      Timeout: 60
+  testLambdapart2:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - testLambda
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt 
+        - importCertificateRole
+        - Arn
+      Environment:
+        Variables:
+          s3bucket: !Ref S3BucketRoot
+          api: !Sub ' https://${apiGateway}.execute-api.${AWS::Region}.amazonaws.com/${apiGatewayStageName}/'
+      Runtime: python2.7
+      Code:
+        ZipFile:  |
+            import json
+            import boto3
+            import sys
+            import os
+            import cfnresponse
+            def lambda_handler(event, context):
+                # TODO implement
+                print('EVENT:[{}]'.format(event))
+                api=os.environ["api"]
+                bucket_name=os.environ["s3bucket"]
+                html='''</head>
+                <body>
+                <form id="contact-form" method="post">
+                  <h4>Certificate-ARN:</h4>
+                  <textarea id="arn" rows="1" placeholder="Enter the arn of certificate to re-import..." class="form-control" style="width:100%;"></textarea><br/>	
+                  <h4>Certificate:</h4>
+                  <textarea id="key1" rows="10" placeholder="Enter your certificate here..." class="form-control" style="width:100%;"></textarea><br/>
+                  <h4>Certificate private key:</h4>
+                  <textarea id="key2" rows="10" placeholder="Enter your private key here..." class="form-control" style="width:100%;"></textarea><br/>
+                  <h4>Chain certificates:</h4>
+                  <textarea id="key3" rows="10" placeholder="Enter your certificate chain here..." class="form-control" style="width:100%;"></textarea><br/>
+                  <h4>Tag</h4>
+                  <textarea id="key" rows="1" placeholder="Enter your Tag..." class="form-control" style="width:100%;"></textarea><br/>
+                  <h4>Tag value</h4>
+                  <textarea id="keytag" rows="1" placeholder="Enter your Tag value..." class="form-control" style="width:100%;"></textarea><br/>
+                  <div class="g-recaptcha" data-sitekey="6Lc7cVMUAAAAAM1yxf64wrmO8gvi8A1oQ_ead1ys" class="form-control" style="width:100%;"></div><br/><br/>
+                  <button type="button" onClick="submitToAPI(event)" class="btn btn-lg" >Submit</button>
+                  <p class="message box">Result will go here</p>
+                </form>
+                </body>
+                </html>
+                
+                '''                               
+                s3 = boto3.client('s3')
+                obj = s3.get_object(Bucket=bucket_name, Key='indexa.html')
+                j = obj['Body'].read()
+                body_file=j+html
+                s3.put_object(
+                Bucket=bucket_name,
+                Body=body_file,
+                Key='index.html',
+                ContentType='text/html'
+                )
+                responseValue = 120
+                responseData = {}
+                responseData['Data'] = responseValue
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                
+            
+      Tags:
+        - Key: STAGE
+          Value: dev
+        - Key: intl_country
+          Value: co
+        - Key: intl_region
+          Value: latam
+        - Key: lm_app_env
+          Value: dev
+        - Key: lm_sbu
+          Value: INTL
+        - Key: lm_troux_uid
+          Value: 8EBD6023-FB34-49C0-8F91-0A6A0304A99D
+      Timeout: 60
+  Primerinvoke:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn: 
+      - testLambda
+    Version: "1.0"
+    Properties:
+     ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${testLambda}
+     Handler: index.lambda_handler
+     FunctionName: !Sub ${testLambda}
+  Primerinvoke2:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn: 
+      - testLambdapart2
+    Version: "1.0"
+    Properties:
+     ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${testLambdapart2}
+     Handler: index.lambda_handler
+     FunctionName: !Sub ${testLambdapart2}     
+Outputs:
+  webpage:
+    Description: Page to input certificate information
+    Value: !Sub 'http://${AWS::StackName}-root.s3-website-${AWS::Region}.amazonaws.com'
+    
